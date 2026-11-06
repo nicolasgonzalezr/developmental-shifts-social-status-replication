@@ -9,7 +9,7 @@ Replication package for **“Developmental Shifts in Social Status Detection Amo
 | File | Description |
 | --- | --- |
 | `Scripts/replicationScript.qmd` | Analysis code, including regression models, bootstrap inference, sensitivity analyses, and table and figure generation. |
-| `Data/replicationData.rds` | Study data, including PageRank social status, grade cohort, classroom, body mass index, theory of mind, self-perceived social status, and academic grades. Data will not be made available until publication. |
+| `Data/replicationData.rds` | Study data, including PageRank social status, grade cohort, classroom, body mass index, theory of mind, self-perceived social status, and academic grades. Data will be made available at manuscript submission. |
 | `Data/bootMatrixT.rds` | Saved percentile-t bootstrap statistics for the four regression models. |
 | `Data/bootMatrixWR.rds` | Saved wild restricted bootstrap statistics for the four regression models. |
 | `Data/bootMatrixSV.rds` | Saved bootstrap statistics for the score-variance test of classroom clustering. |
