@@ -277,7 +277,7 @@ if (runBootstraps) {
   
   bootMatrix <- do.call(rbind, bootResults)
   
-  saveRDS(bootMatrix, "bootMatrixT.rds")
+  saveRDS(bootMatrix, "../Data/bootMatrixT.rds")
   
 }
 ```
@@ -480,7 +480,7 @@ if (runBootstraps) {
   
   bootMatrix <- do.call(rbind, bootResults)
   
-  saveRDS(bootMatrix, "bootMatrixWR.rds")
+  saveRDS(bootMatrix, "../Data/bootMatrixWR.rds")
   
 }
 ```
@@ -1042,7 +1042,7 @@ if (runBootstraps) {
     left_join(sensitivity[["percentileBoot"]], by="Variable") %>%
     left_join(sensitivity[["wildBoot"]], by="Variable")
   
-  saveRDS(sensitivityTable, "../Tables/sensitivityTable.rds")
+  saveRDS(sensitivityTable, "../Data/sensitivityTable.rds")
 }
 ```
 
@@ -1052,7 +1052,7 @@ Sensitivity table reports p-values for the focal coefficients in the final model
 
 ```{r}
 
-sensitivityTable <- readRDS("../Tables/sensitivityTable.rds")
+sensitivityTable <- readRDS("../Data/sensitivityTable.rds")
 
 hcPanel <- sensitivityTable %>%
   select(
