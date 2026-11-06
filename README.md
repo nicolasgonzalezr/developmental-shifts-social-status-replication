@@ -2,6 +2,8 @@
 
 Replication package for **“Developmental Shifts in Social Status Detection Among School-Age Children.”**
 
+Work in progress: This project is ongoing. The analyses and replication materials are not yet finalized and may change.
+
 ## Replication files
 
 | File | Description |
@@ -23,7 +25,7 @@ R and the following packages:
 install.packages(c("tidyverse", "readxl", "sandwich", "clubSandwich", "lmtest", "car", "stargazer", "ragg", "kableExtra"))
 ```
 
-The `parallel` package is included with R. Quarto is needed to render the analysis document.
+Quarto is needed to render the analysis document.
 
 ## Run the analyses
 
@@ -36,17 +38,6 @@ The script defaults to using saved bootstrap results (`runBootstraps <- FALSE`).
 To rerun the bootstrap procedures, set `runBootstraps <- TRUE`. The default is 99,999 iterations per procedure, which is computationally intensive. The original parallel configuration used 15 cores; changing the parallel configuration can change the random draws. Use the supplied results to reproduce the reported bootstrap p-values.
 
 With `saveTables <- TRUE`, regression tables are exported as HTML files in the working directory, and the main figure is exported as PNG and TIFF files to `Plots/` at the repository root.
-
-## Current script notes
-
-The current script requires these adjustments before a complete run:
-
-- Change the sensitivity table loading and saving paths from `../Tables/sensitivityTable.rds` to `../Data/sensitivityTable.rds`.
-- In `wildFun()`, place `names(tStats) <- coefficients` on a new line after the closing `)` of `sapply()`.
-- Skip the sensitivity summary-table chunk beginning with `summaryPanel %>%`, or define `summaryPanel` first. That object is not created in the script; the preceding HC and CR panels use the supplied sensitivity results.
-- Create the `Plots/` folder before exporting figures.
-
-When regenerating bootstraps, also change the saving paths for `bootMatrixT.rds` and `bootMatrixWR.rds` to `../Data/bootMatrixT.rds` and `../Data/bootMatrixWR.rds`, respectively, so the subsequent chunks load the regenerated results. Regeneration replaces files at the specified saving paths.
 
 ## Contact
 
