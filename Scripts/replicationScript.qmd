@@ -1,0 +1,1684 @@
+---
+title: "Developmental Shifts in Social Status Detection Among School-Age Children"
+format: html
+editor: visual
+---
+
+# **Developmental Shifts in Social Status Detection Among School-Age Children**
+
+## Notes on replication package
+
+1.  The analysis script assumes that the R project environment is set to the folder containing the script and replication objects. File paths are therefore written relative to the project root. The required replication objects are: `replicationData.rds`, `sensitivityTable.rds`, `bootMatrixT.rds`, `bootMatrixWR.rds`, `bootMatrixSV.rds`, `bootMatrixWald.rds`, `bootMatrixWCR.rds` If the script is run from another working directory, file-loading commands may need to be adjusted accordingly.
+
+2.  Bootstrap procedures can be run either in parallel or sequentially. The replication script exposes four tuning parameters for this part of the analysis: `runBootstraps`, `parallelSupported`, `availableCores`, and number of bootstrap iterations `B`. If `runBootstraps` is set to `TRUE`, the script regenerates the bootstrap matrices. If `parallelSupported` is set to `TRUE`, the bootstrap is run in parallel using `mclapply()` from the `parallel` package, with the number of cores determined by `availableCores`. If `parallelSupported` is set to `FALSE`, the script uses `lapply()` instead. Changing from `mclapply()` to `lapply()` preserves the logic of the bootstrap procedure but may not reproduce the exact same random draws, even when the same seed is set, because serial and parallel evaluation can consume the random-number stream differently. Exact regeneration of the provided bootstrap matrices therefore requires the original parallel configuration with `availableCores = 15`.
+
+3.  The main bootstrap analyses use a large number of iterations (`B = 99,999`). To facilitate exact reproduction of the reported bootstrap p-values and avoid requiring users to rerun the full bootstrap procedures, the bootstrap result matrices used in the manuscript are included in the replication package as `.rds` files. The script defaults to using these files for the final bootstrap-based p-value calculations.
+
+### Tuning parameters
+
+```{r}
+
+runBootstraps <- FALSE
+parallelSupported <- TRUE
+availableCores <- 15
+B <- 99999
+
+saveTables <- TRUE # Exports tables and figures to the project root
+```
+
+## **Load libraries and data**
+
+```{r}
+#| echo: false
+
+library(tidyverse)
+library(readxl)
+library(parallel)
+library(sandwich)     # HCVE
+library(clubSandwich) # CRVE
+library(lmtest)       # t tests
+library(car)          # Wald test
+library(stargazer)    # Regression tables
+library(ragg)         # Export figure
+library(kableExtra)   # Print sensitivity table
+```
+
+```{r}
+
+replicationData <- readRDS("../Data/replicationData.rds") %>%
+  group_by(ClassID) %>%
+  mutate(
+    PageRank = as.numeric(scale(PageRank)) # Cluster mean centered / standardized
+  ) %>%
+  ungroup() %>%
+  mutate(
+    across(.cols = c(BMI, ToM, SelfStatusCountry, SelfStatusSchool, Grades), ~ as.numeric(scale(.))), # Grand mean centered / standardized
+  )
+```
+
+## Models
+
+```{r}
+
+vcovType <- "HC2"
+
+# --------------------ONE----------------------
+
+modelOne <- lm(PageRank ~ BMI + ToM, data=replicationData)
+
+vcovOne <- vcovHC(
+  modelOne,
+  type = vcovType
+)
+
+testOne <- as.data.frame(unclass(coeftest(modelOne, vcovOne)))
+
+robustOne <- testOne$`Std. Error`
+
+pOne <- testOne$`Pr(>|t|)`
+
+# --------------------TWO-----------------
+
+modelTwo <- lm(PageRank ~ ThirdGrade + BMI + ToM + ThirdGrade*BMI + ThirdGrade*ToM, data=replicationData)
+
+vcovTwo <- vcovHC(
+  modelTwo,
+  type = vcovType
+)
+
+testTwo <- as.data.frame(unclass(coeftest(modelTwo, vcovTwo)))
+
+robustTwo <- testTwo$`Std. Error`
+
+pTwo <- testTwo$`Pr(>|t|)`
+
+# --------------------THREE-----------------
+
+modelThree <- lm(PageRank ~ ThirdGrade + BMI + ToM + SelfStatusSchool + ThirdGrade*BMI + ThirdGrade*ToM + ThirdGrade*SelfStatusSchool, data=replicationData)
+
+vcovThree <- vcovHC(
+  modelThree,
+  type = vcovType
+)
+
+testThree<- as.data.frame(unclass(coeftest(modelThree, vcovThree)))
+
+robustThree <- testThree$`Std. Error`
+
+pThree <- testThree$`Pr(>|t|)`
+
+# --------------------FOUR-----------------
+
+modelFour <- lm(PageRank ~ ThirdGrade + BMI + ToM + Grades + ThirdGrade*BMI + ThirdGrade*ToM, data=replicationData)
+
+vcovFour <- vcovHC(
+  modelFour,
+  type = vcovType
+)
+
+testFour <- as.data.frame(unclass(coeftest(modelFour, vcovFour)))
+
+robustFour <- testFour$`Std. Error`
+
+pFour <- testFour$`Pr(>|t|)`
+
+# --------------------BMI EFFECT SIZE-----------------
+
+modelBMI <- lm(PageRank ~ ThirdGrade + ToM + Grades + ThirdGrade*ToM, data=replicationData)
+
+semiPartialBMI <- summary(modelFour)$r.squared - summary(modelBMI)$r.squared
+
+semiPartialBMI
+
+# --------------------ToM EFFECT SIZE-----------------
+
+modelToM <- lm(PageRank ~ ThirdGrade + BMI + Grades + ThirdGrade*BMI, data=replicationData)
+
+semiPartialToM <- summary(modelFour)$r.squared - summary(modelToM)$r.squared
+
+semiPartialToM
+```
+
+### Print tables
+
+```{r}
+
+notes <- c("Linear models estimated with ordinary least squares (OLS). * p<0.10, ** p<0.05, *** p<0.01. BMI = Body Mass Index; ToM = Theory of Mind. Self status school corresponds to the MacArthur Scale of Social Status (school context). Variables marked ‘(z)’ are standardized. Parentheses show heteroskedasticity-consistent SEs (HC2). All values were rounded to 3 decimal places.")
+
+```
+
+#### html
+
+```{r}
+#| echo: false
+
+if (saveTables) {
+  suppressWarnings(
+    stargazer(modelOne, modelTwo, modelThree, modelFour, 
+              se=list(robustOne, robustTwo, robustThree, robustFour),
+              p=list(pOne, pTwo, pThree, pFour),
+              type="html", out="ModelStatusA.html", 
+              covariate.labels = c("ThirdGrade"="ThirdGrade", "BMI"="BMI (z)", "ToM"="ToM (z)", "SelfStatusSchool"="SelfStatusSchool (z)", "Grades"="Grades (z)"),
+              dep.var.labels = c("PageRank"="PageRank (z)"),
+              notes = notes,
+              notes.append = FALSE,
+              notes.align = "l",
+              report = "vc*sp",
+              digits = 3
+    )  
+  ) 
+}
+```
+
+#### text
+
+```{r}
+
+suppressWarnings(
+  stargazer(modelOne, modelTwo, modelThree, modelFour, 
+            se=list(robustOne, robustTwo, robustThree, robustFour), 
+            p=list(pOne, pTwo, pThree, pFour),
+            type="text",
+            covariate.labels = c("ThirdGrade"="ThirdGrade", "BMI"="BMI (z)", "ToM"="ToM (z)", "SelfStatusSchool"="SelfStatusSchool (z)", "Grades"="Grades (z)"),
+            dep.var.labels = c("PageRank"="PageRank (z)"),
+            report = "vc*sp",
+            digits = 3
+  ) 
+)
+```
+
+## Bootstrap refined inference
+
+```{r}
+
+modelList <- list(
+  modelOne = list(
+    call = modelOne,
+    unrestricted = coeftest(modelOne, vcov = vcovOne)
+  ),
+  modelTwo = list(
+    call = modelTwo,
+    unrestricted = coeftest(modelTwo, vcov = vcovTwo)
+  ),
+  modelThree = list(
+    call = modelThree,
+    unrestricted = coeftest(modelThree, vcov = vcovThree)
+  ),
+  modelFour = list(
+    call = modelFour,
+    unrestricted = coeftest(modelFour, vcov = vcovFour)
+  )
+)
+```
+
+### Percentile-t method
+
+#### Run
+
+```{r}
+
+if (runBootstraps) {
+ 
+  set.seed(73387)
+  
+  percentileBootFun <- function(i, modelList) {
+    
+    rowList <- lapply(
+      X = names(modelList),
+      FUN = function(m) {
+        
+        bootData <- model.frame(modelList[[m]][["call"]])
+        
+        idx <- sample.int(nrow(bootData), nrow(bootData), replace = TRUE)
+        
+        bootSample <- bootData[idx, ]
+        
+        predictors <- rownames(modelList[[m]][["unrestricted"]])
+        
+        modelString <- paste0("PageRank ~ ", paste(predictors[-1], collapse=" + "))
+        
+        unrestrictedBoot <- lm(modelString, data=bootSample)
+        
+        test  <- coeftest(unrestrictedBoot, vcov = vcovHC(unrestrictedBoot, type = vcovType))
+        
+        seBoot <- as.vector(test[, "Std. Error"])
+        
+        thetaBoot  <- as.vector(test[, "Estimate"])
+        
+        thetaHat <- as.vector(modelList[[m]][["unrestricted"]][, "Estimate"])
+        
+        tStats <- (thetaBoot - thetaHat) / seBoot
+        
+        names(tStats) <- predictors
+        
+        return(tStats)
+      }
+    )
+    
+    names(rowList) <- names(modelList)
+    
+    return(unlist(rowList))
+  }
+  
+  if (parallelSupported) {
+    bootResults <- mclapply(
+      X = 1:B,
+      FUN = percentileBootFun,
+      modelList = modelList,
+      mc.cores = availableCores
+    )
+  } else {
+    bootResults <- lapply(
+      X = 1:B,
+      FUN = percentileBootFun,
+      modelList = modelList
+    )
+  }
+  
+  bootMatrix <- do.call(rbind, bootResults)
+  
+  saveRDS(bootMatrix, "bootMatrixT.rds")
+  
+}
+```
+
+#### Results
+
+```{r}
+
+bootMatrix <- readRDS("../Data/bootMatrixT.rds")
+
+pList <- lapply(
+  X = names(modelList),
+  FUN = function(m){
+    
+    bootSubmatrix <- bootMatrix[, startsWith(colnames(bootMatrix), m)]
+    
+    coefs <- rownames(modelList[[m]][["unrestricted"]])
+    
+    pBoot <- sapply(
+      coefs, 
+      function(c) {
+        tHat <- abs(modelList[[m]][["unrestricted"]][c, "t value"])
+        col <- paste(m, c, sep = ".")
+        
+        mean(abs(bootSubmatrix[, col]) > tHat, na.rm = TRUE)
+        
+      }
+    )
+    
+    names(pBoot) <- coefs
+    
+    return(pBoot)
+    
+  }
+)
+
+names(pList) <- names(modelList)
+```
+
+#### Table
+
+```{r}
+
+notes <- c("Linear models estimated with ordinary least squares (OLS). * p<0.10, ** p<0.05, *** p<0.01. BMI = Body Mass Index; ToM = Theory of Mind. Self status school corresponds to the MacArthur Scale of Social Status (school context). Variables marked ‘(z)’ are standardized. Parentheses show heteroskedasticity-consistent SEs (HC2). P-values estimated using a percentile-t bootstrap procedure.")
+
+```
+
+##### html
+
+```{r}
+#| echo: false
+
+if (saveTables) {
+  suppressWarnings(
+    stargazer(modelOne, modelTwo, modelThree, modelFour,
+              se=list(robustOne, robustTwo, robustThree, robustFour),
+              p=pList,
+              type="html", out="ModelStatusT.html", 
+              covariate.labels = c("ThirdGrade"="ThirdGrade", "BMI"="BMI (z)", "ToM"="ToM (z)", "SelfStatusSchool"="SelfStatusSchool (z)", "Grades"="Grades (z)"),
+              dep.var.labels = c("PageRank"="PageRank (z)"),
+              notes = notes,
+              notes.append = FALSE,
+              notes.align = "l",
+              report = "vc*sp"
+    ) 
+  )
+}
+```
+
+##### text
+
+```{r}
+
+suppressWarnings(
+  stargazer(modelOne, modelTwo, modelThree, modelFour,
+            se=list(robustOne, robustTwo, robustThree, robustFour),
+            p=pList,
+            type="text",
+            covariate.labels = c("ThirdGrade"="ThirdGrade", "BMI"="BMI (z)", "ToM"="ToM (z)", "SelfStatusSchool"="SelfStatusSchool (z)", "Grades"="Grades (z)"),
+            dep.var.labels = c("PageRank"="PageRank (z)"),
+            report = "vc*sp"
+  )
+)
+```
+
+### Wild restricted bootstrap
+
+#### Run
+
+```{r}
+
+if (runBootstraps) {
+  
+  set.seed(73387)
+  
+  for (m in names(modelList)) {
+    
+    restrictedData <- model.frame(modelList[[m]][["call"]])
+    
+    predictors <- rownames(modelList[[m]][["unrestricted"]])
+    
+    for (p in seq_along(predictors)) {
+      
+      if (predictors[p] == "(Intercept)") {
+        
+        rhs <- predictors[-1]
+        
+        if (length(rhs) == 0) {
+          modelString <- "PageRank ~ 0"
+        } else {
+          modelString <- paste0("PageRank ~ 0 + ", paste(rhs, collapse = " + "))
+        }
+        
+      } else {
+        
+        rhs <- predictors[-c(1, p)]
+        
+        if (length(rhs) == 0) {
+          modelString <- "PageRank ~ 1"
+        } else {
+          modelString <- paste0("PageRank ~ ", paste(rhs, collapse = " + "))
+        }
+        
+      }
+      
+      restrictedFit <- lm(modelString, data=restrictedData)
+      
+      restrictedFitted <- fitted(restrictedFit)
+      
+      restrictedResiduals <- residuals(restrictedFit)
+      
+      modelList[[m]][["restricted"]][[predictors[p]]][["fitted"]] <- restrictedFitted
+      modelList[[m]][["restricted"]][[predictors[p]]][["residuals"]] <- restrictedResiduals - mean(restrictedResiduals)
+      
+    }
+    
+  }
+  
+  rademacher <- function(n) sample(c(-1, 1), n, replace = TRUE)
+  
+  restrictedBootFun <- function(i, modelList) {
+    
+    rowList <- lapply(
+      X = names(modelList),
+      FUN = function(m) {
+        
+        bootData <- model.frame(modelList[[m]][["call"]])
+        
+        predictors <- rownames(modelList[[m]][["unrestricted"]])
+        
+        tStats <- sapply(
+          X=predictors,
+          FUN = function(p) {
+            
+            residualSample <- rademacher(nrow(bootData)) *  modelList[[m]][["restricted"]][[p]][["residuals"]]
+            
+            response <- modelList[[m]][["restricted"]][[p]][["fitted"]] + residualSample
+            
+            bootData$PageRank <- response
+            
+            modelString <- paste0("PageRank ~ ", paste(predictors[-1], collapse=" + "))
+            
+            unrestrictedBoot <- lm(modelString, data=bootData)
+            
+            vcovBoot <- vcovHC(unrestrictedBoot, type = vcovType)
+            
+            test  <- coeftest(unrestrictedBoot, vcov = vcovBoot)
+            
+            tStar  <- test[p, "t value"]
+            
+            return(tStar)
+          }
+        )
+        
+        names(tStats) <- predictors
+        
+        return(tStats)
+      }
+    )
+    
+    names(rowList) <- names(modelList)
+    
+    return(unlist(rowList))
+  }
+  
+  if (parallelSupported) {
+    bootResults <- mclapply(
+      X = 1:B,
+      FUN = restrictedBootFun,
+      modelList = modelList,
+      mc.cores = availableCores
+    )
+  } else {
+    bootResults <- lapply(
+      X = 1:B,
+      FUN = restrictedBootFun,
+      modelList = modelList
+    )
+  }
+  
+  bootMatrix <- do.call(rbind, bootResults)
+  
+  saveRDS(bootMatrix, "bootMatrixWR.rds")
+  
+}
+```
+
+#### Results
+
+```{r}
+
+bootMatrix <- readRDS("../Data/bootMatrixWR.rds")
+
+pList <- lapply(
+  X = names(modelList),
+  FUN = function(m){
+    
+    bootSubmatrix <- bootMatrix[, startsWith(colnames(bootMatrix), m)]
+    
+    coefs <- rownames(modelList[[m]][["unrestricted"]])
+    
+    pBoot <- sapply(
+      coefs, 
+      function(c) {
+        tHat <- abs(modelList[[m]][["unrestricted"]][c, "t value"])
+        col <- paste(m, c, sep = ".")
+        
+        mean(abs(bootSubmatrix[, col]) > tHat, na.rm = TRUE)
+        
+      }
+    )
+    
+    names(pBoot) <- coefs
+    
+    return(pBoot)
+    
+  }
+)
+
+names(pList) <- names(modelList)
+```
+
+#### Table
+
+```{r}
+
+notes <- c("Linear models estimated with ordinary least squares (OLS). * p<0.10, ** p<0.05, *** p<0.01. BMI = Body Mass Index; ToM = Theory of Mind. Self status school corresponds to the MacArthur Scale of Social Status (school context). Variables marked ‘(z)’ are standardized. Parentheses show heteroskedasticity-consistent SEs (HC2). P-values estimated using a wild restricted bootstrap procedure.")
+```
+
+##### html
+
+```{r}
+#| echo: false
+
+if (saveTables) {
+  suppressWarnings(
+    stargazer(modelOne, modelTwo, modelThree, modelFour,
+              se=list(robustOne, robustTwo, robustThree, robustFour),
+              p=pList,
+              type="html", out="ModelStatusWR.html", 
+              covariate.labels = c("ThirdGrade"="ThirdGrade", "BMI"="BMI (z)", "ToM"="ToM (z)", "SelfStatusSchool"="SelfStatusSchool (z)", "Grades"="Grades (z)"),
+              dep.var.labels = c("PageRank"="PageRank (z)"),
+              notes = notes,
+              notes.append = FALSE,
+              notes.align = "l",
+              report = "vc*sp"
+    )
+  )
+}
+```
+
+##### text
+
+```{r}
+
+suppressWarnings(
+  stargazer(modelOne, modelTwo, modelThree, modelFour,
+            se=list(robustOne, robustTwo, robustThree, robustFour),
+            p=pList,
+            type="text",
+            covariate.labels = c("ThirdGrade"="ThirdGrade", "BMI"="BMI (z)", "ToM"="ToM (z)", "SelfStatusSchool"="SelfStatusSchool (z)", "Grades"="Grades (z)"),
+            dep.var.labels = c("PageRank"="PageRank (z)"),
+            report = "vc*sp"
+  ) 
+)
+```
+
+## Score-variance (cluster) test
+
+Null hypothesis of no clustering structure (heteroskedastic baseline).
+
+- MacKinnon, J. G., Nielsen, M. Ø., & Webb, M. D. (2023). Testing for the appropriate level of clustering in linear regression models. *Journal of Econometrics*, *235*(2), 2027-2056. https://doi.org/10.1016/j.jeconom.2023.03.005
+
+```{r}
+
+svFun <- function(model, clusterID, data) {
+  
+  modelIdx <- as.integer(rownames(model.frame(model)))
+  
+  data <- data[modelIdx, ]
+  
+  G <-  length(unique(data[[clusterID]]))
+  
+  N <- nrow(data)
+
+  scoreList <- lapply(
+    X = 1:ncol(model.matrix(model)),
+    FUN = function(X){
+      
+      X1 <- model.matrix(model)[, X, drop=FALSE]
+      
+      X2 <- model.matrix(model)[, -X, drop=FALSE]
+      
+      I <- diag(nrow(X2))
+      
+      Xtilde <- (I - X2 %*% solve(t(X2) %*% X2) %*% t(X2)) %*% X1
+      
+      res <- as.matrix(model$residuals)
+      
+      scores <- Xtilde * res
+      
+      return(scores) 
+    }
+  )
+  
+  scores <- do.call(
+    cbind,
+    scoreList
+  )
+  
+  scoreNames <- colnames(model.matrix(model))
+  
+  colnames(scores) <- scoreNames
+  
+  scoresDF <- as.data.frame(scores)
+  
+  scoresDF$cluster <- data[[clusterID]]
+  
+  sigmaCoarse <- scoresDF %>%
+    group_by(cluster) %>%
+    summarise(across(all_of(scoreNames), ~ sum(.x)^2), .groups = "drop") %>%
+    summarise(across(all_of(scoreNames), sum)) %>%
+    unlist() * G/(G-1)
+  
+  sigmaFine <- scoresDF %>%
+    summarise(across(all_of(scoreNames), ~ sum(.x^2))) %>%
+    unlist() * N/(N-1)
+  
+  theta <- sigmaCoarse - sigmaFine
+  
+  termOne <- scoresDF %>%
+    group_by(cluster) %>%
+    summarise(across(all_of(scoreNames), ~ sum(.x^2)^2), .groups = "drop") %>%
+    summarise(across(all_of(scoreNames), ~ 2 * sum(.x))) %>%
+    unlist()
+  
+  termTwo <- scoresDF %>%
+    summarise(across(all_of(scoreNames), ~ 2 * sum(.x^4))) %>%
+    unlist()
+  
+  varTheta <- termOne - termTwo
+  
+  tau <- theta / sqrt(varTheta)
+  
+  pValue <- 2 * pnorm(abs(tau), lower.tail = FALSE)
+  
+  df <- data.frame(
+    theta = theta,
+    varTheta = varTheta,
+    tau = tau,
+    pValue = pValue
+  )
+  
+  return(df)
+}
+
+svTest <- svFun(modelFour, "ClassID", replicationData)
+
+svTest
+```
+
+### Bootstrap SV
+
+```{r}
+
+if (runBootstraps) {
+  
+  set.seed(73387)
+
+  rademacher <- function(n) sample(c(-1, 1), n, replace = TRUE)
+  
+  bootSvFun <- function(i, model, clusterID, data) {
+    
+    modelIdx <- as.integer(rownames(model.frame(model)))
+    
+    data <- data[modelIdx, ]
+    
+    G <-  length(unique(data[[clusterID]]))
+    
+    N <- nrow(data)
+    
+    data$PageRank <- rademacher(nrow(data)) * residuals(model)
+    
+    modelBoot <- lm(formula(model), data=data)
+    
+    scoreList <- lapply(
+      X = 1:ncol(model.matrix(model)),
+      FUN = function(X){
+        
+        X1 <- model.matrix(modelBoot)[, X, drop=FALSE]
+        
+        X2 <- model.matrix(modelBoot)[, -X, drop=FALSE]
+        
+        I <- diag(nrow(X2))
+        
+        Xtilde <- (I - X2 %*% solve(t(X2) %*% X2) %*% t(X2)) %*% X1
+        
+        res <- as.matrix(residuals(modelBoot))
+        
+        scores <- Xtilde * res
+        
+        return(scores) 
+      }
+    )
+    
+    scores <- do.call(
+      cbind,
+      scoreList
+    )
+    
+    scoreNames <- colnames(model.matrix(model))
+    
+    colnames(scores) <- scoreNames
+    
+    scoresDF <- as.data.frame(scores)
+    
+    scoresDF$cluster <- data[[clusterID]]
+    
+    sigmaCoarse <- scoresDF %>%
+      group_by(cluster) %>%
+      summarise(across(all_of(scoreNames), ~ sum(.x)^2), .groups = "drop") %>%
+      summarise(across(all_of(scoreNames), sum)) %>%
+      unlist() * G/(G-1)
+    
+    sigmaFine <- scoresDF %>%
+      summarise(across(all_of(scoreNames), ~ sum(.x^2))) %>%
+      unlist() * N/(N-1)
+    
+    theta <- sigmaCoarse - sigmaFine
+    
+    termOne <- scoresDF %>%
+      group_by(cluster) %>%
+      summarise(across(all_of(scoreNames), ~ sum(.x^2)^2), .groups = "drop") %>%
+      summarise(across(all_of(scoreNames), ~ 2 * sum(.x))) %>%
+      unlist()
+    
+    termTwo <- scoresDF %>%
+      summarise(across(all_of(scoreNames), ~ 2 * sum(.x^4))) %>%
+      unlist()
+    
+    varTheta <- termOne - termTwo
+    
+    tau <- theta / sqrt(varTheta)
+    
+    names(tau) <- scoreNames
+    
+    return(tau)
+  }
+  
+  
+  if (parallelSupported) {
+    bootResults <- mclapply(
+      X = 1:B,
+      FUN = bootSvFun,
+      model = modelFour,
+      cluster = "ClassID",
+      data = replicationData,
+      mc.cores = availableCores
+    )
+  } else {
+    bootResults <- lapply(
+      X = 1:B,
+      FUN = bootSvFun,
+      model = modelFour,
+      cluster = "ClassID",
+      data = replicationData
+    )
+  }
+  
+  bootMatrix <- do.call(rbind, bootResults)
+  
+  saveRDS(bootMatrix, "../Data/bootMatrixSV.rds")
+
+}
+```
+
+```{r}
+
+bootMatrix <- readRDS("../Data/bootMatrixSV.rds")
+
+coefs <- colnames(bootMatrix)
+
+pBoot <- sapply(
+  coefs, 
+  function(c) {
+    tHat <- abs(svTest[c, "tau"])
+    mean(abs(bootMatrix[, c]) > tHat, na.rm = TRUE)
+  }
+)
+
+names(pBoot) <- coefs
+
+pBoot
+```
+
+## Small-sample inference sensitivity analysis
+
+To assess the dependence of the results on finite-sample inference choices, we conducted a small-sample inference sensitivity analysis. This analysis compared significance of results under alternative heteroskedasticity and cluster robust variance estimators, across asymptotic theory and both percentile-t and wild restricted bootstrap. Cluster bootstrap inference (wild cluster restricted) was also attempted, but the resulting reference distributions were highly multimodal, reflecting the small number of effective classroom clusters; these results were therefore treated as unreliable and are not presented along the main results.
+
+### Function
+
+```{r}
+
+percentileFun <- function(j, vcovType, model, modelData, asymptotics) {
+  idx <- sample.int(nrow(modelData), nrow(modelData), replace = TRUE)
+  bootSample <- modelData[idx, ]
+  fitBoot <- lm(formula(model), data=bootSample)
+  V <- vcovHC(fitBoot, type=vcovType)
+  test <- coeftest(fitBoot, vcov. = V)
+  table <- as.data.frame(unclass(test))
+  table$Type <- vcovType
+  table$Variable <- rownames(table)
+  rownames(table) <- NULL
+  tStats <- asymptotics %>%
+    filter(Type == vcovType) %>%
+    select(Variable, Estimate) %>%
+    right_join(table, by = "Variable", suffix = c(".x", ".y")) %>%
+    mutate(
+      tStats = (Estimate.y - Estimate.x) / `Std. Error`
+    ) %>%
+    select(Variable, tStats) %>%
+    tibble::deframe()
+  return(tStats)
+}
+
+wildFun <- function(j, coefficients, vcovType, model, modelData, restrictedFitted, restrictedResiduals) {
+  tStats <- sapply(
+    X=coefficients,
+    FUN = function(c) {
+      residualSample <- rademacher(nrow(modelData)) *  restrictedResiduals[[c]]
+      response <- restrictedFitted[[c]] + residualSample
+      bootSample <- modelData
+      bootSample$PageRank <- response
+      fitBoot <- lm(formula(model), data=bootSample)
+      V <- vcovHC(fitBoot, type=vcovType)
+      test <- coeftest(fitBoot, vcov. = V)
+      tStar  <- test[c, "t value"]
+      return(tStar)
+    }
+  )
+  names(tStats) <- coefficients
+  return(tStats)
+}
+
+sensitivityFun <- function(B, testVec, model, coefs, data, parallelSupported, availableCores) {
+  
+  modelData <- model.frame(model)
+  cluster <- data[["ClassID"]][as.integer(rownames(modelData))]
+  G <- length(unique(cluster))
+  
+  asymptotics <- lapply(
+    X=testVec,
+    FUN = function(i) {
+      if(startsWith(i, "HC")) {
+        V <- vcovHC(model, type=i)
+        test <- coeftest(model, vcov. = V)
+      } else if (startsWith(i, "CR")) {
+        V <- vcovCR(model, cluster = cluster, type=i)
+        test <- coeftest(model, vcov. = V, df = G-1)
+      } else {
+        return(NA)
+      }
+      table <- as.data.frame(unclass(test))
+      table$Type <- i
+      table$Variable <- rownames(table)
+      rownames(table) <- NULL
+      return(table)
+    }
+  )
+  
+  asymptotics <- do.call(rbind, asymptotics)
+  
+  asymptoticsWide <- asymptotics %>%
+    pivot_wider(
+      id_cols = c(Variable, Estimate),
+      names_from = Type,
+      values_from = `Pr(>|t|)`
+    )
+  
+  #---------------------------------PERCENTILE-T----------------------------------------
+  
+  percentileBoot <- lapply(
+    X=testVec[startsWith(testVec, "HC")],
+    FUN = function(i) {
+      
+      if (parallelSupported) {
+        bootMatrix <- mclapply(
+          X=1:B,
+          FUN = percentileFun,
+          vcovType = i,
+          model = model,
+          modelData = modelData,
+          asymptotics = asymptotics,
+          mc.cores = availableCores
+        )        
+      } else {
+        bootMatrix <- lapply(
+          X=1:B,
+          FUN = percentileFun,
+          vcovType = i,
+          model = model,
+          modelData = modelData,
+          asymptotics = asymptotics
+        )      
+      }
+      
+      bootMatrix <- do.call(rbind, bootMatrix)
+      pBoot <- sapply(
+        coefs, 
+        function(c) {
+          tHat <- asymptotics %>%
+            filter(Type == i & Variable == c) %>%
+            pull(`t value`)
+          tHat <- abs(tHat)
+          mean(abs(bootMatrix[, c]) > tHat, na.rm = TRUE)
+        }
+      )
+      names(pBoot) <- coefs
+      pBoot <- as.data.frame(as.list(pBoot), check.names = FALSE)
+      pBoot$Type <- paste0(i, "-t")
+      return(pBoot)
+    }
+  )
+  
+  percentileBoot <- do.call(rbind, percentileBoot)
+  rownames(percentileBoot) <- NULL
+  
+  percentileBoot <- percentileBoot %>%
+    pivot_longer(
+      cols = c(all_of(coefs)),
+      names_to = "Variable",
+      values_to = "Pr(>|t|)"
+    ) %>%
+    pivot_wider(
+      names_from = Type,
+      values_from = `Pr(>|t|)`
+    )
+
+  #------------------------------WILD RESTRICTED-------------------------------------
+  
+  restrictedFitted <- list()
+  restrictedResiduals <- list()
+  
+  for (c in coefs) {
+    predictors <- names(model$coefficients)
+    modelString <- paste0("PageRank ~ ", paste(predictors[-c(1, which(predictors == c))], collapse = " + "))
+    restrictedFit <- lm(modelString, data=modelData)
+    restrictedFitted[[c]] <- fitted(restrictedFit)
+    r <- residuals(restrictedFit)
+    restrictedResiduals[[c]] <- r - mean(r)
+  }
+  
+  wildBoot <- lapply(
+    X=testVec[startsWith(testVec, "HC")],
+    FUN = function(i) {
+      
+      if (parallelSupported) {
+        bootMatrix <- mclapply(
+          X=1:B,
+          FUN = wildFun,
+          coefficients = coefs,
+          vcovType = i,
+          model = model,
+          modelData = modelData,
+          restrictedFitted = restrictedFitted,
+          restrictedResiduals = restrictedResiduals,
+          mc.cores = availableCores
+        )       
+      } else {
+        bootMatrix <- lapply(
+          X=1:B,
+          FUN = wildFun,
+          coefficients = coefs,
+          vcovType = i,
+          model = model,
+          modelData = modelData,
+          restrictedFitted = restrictedFitted,
+          restrictedResiduals = restrictedResiduals        
+        )
+      }
+      
+      bootMatrix <- do.call(rbind, bootMatrix)
+      pBoot <- sapply(
+        coefs, 
+        function(c) {
+          tHat <- asymptotics %>%
+            filter(Type == i & Variable == c) %>%
+            pull(`t value`)
+          tHat <- abs(tHat)
+          mean(abs(bootMatrix[, c]) > tHat, na.rm = TRUE)
+        }
+      )
+      names(pBoot) <- coefs
+      pBoot <- as.data.frame(as.list(pBoot), check.names = FALSE)
+      pBoot$Type <- paste0(i, "-WR")
+      return(pBoot)
+    }
+  )
+  
+  wildBoot <- do.call(rbind, wildBoot)
+  rownames(wildBoot) <- NULL
+  
+  wildBoot <- wildBoot %>%
+    pivot_longer(
+      cols = c(all_of(coefs)),
+      names_to = "Variable",
+      values_to = "Pr(>|t|)"
+    ) %>%
+    pivot_wider(
+      names_from = Type,
+      values_from = `Pr(>|t|)`
+    )
+  
+  return(list(asymptotics=asymptoticsWide, percentileBoot=percentileBoot, wildBoot=wildBoot))
+}
+```
+
+### Run
+
+```{r}
+
+if (runBootstraps) {
+  
+  set.seed(73387)
+  
+  testVec <- c("HC0", "HC1", "HC2", "HC3", "CR0", "CR1", "CR2", "CR3")
+  
+  coefs <- c("BMI", "ToM", "ThirdGrade:BMI", "ThirdGrade:ToM")
+  
+  sensitivity <- sensitivityFun(
+    B = B,
+    testVec = testVec,
+    model = modelFour,
+    coefs = coefs,
+    data = replicationData,
+    parallelSupported = parallelSupported,
+    availableCores = availableCores
+  )
+  
+  sensitivityTable <- sensitivity[["asymptotics"]] %>%
+    filter(Variable %in% coefs) %>%
+    left_join(sensitivity[["percentileBoot"]], by="Variable") %>%
+    left_join(sensitivity[["wildBoot"]], by="Variable")
+  
+  saveRDS(sensitivityTable, "../Tables/sensitivityTable.rds")
+}
+```
+
+### Table
+
+Sensitivity table reports p-values for the focal coefficients in the final model under alternative asymptotic robust sandwich variance estimators (heteroskedasticity and cluster) and its bootstrap-based finite-sample refinements.
+
+```{r}
+
+sensitivityTable <- readRDS("../Tables/sensitivityTable.rds")
+
+hcPanel <- sensitivityTable %>%
+  select(
+    Variable, Estimate,
+    `HC2`, `HC2-t`, `HC2-WR`,
+    `HC3`, `HC3-t`, `HC3-WR`,
+    `HC1`, `HC1-t`, `HC1-WR`,
+    `HC0`, `HC0-t`, `HC0-WR`
+  ) %>%
+  mutate(
+    Variable = case_when(
+      Variable == "BMI" ~ "BMI",
+      Variable == "ToM" ~ "ToM",
+      Variable == "ThirdGrade:BMI" ~ "Third grade × BMI",
+      Variable == "ThirdGrade:ToM" ~ "Third grade × ToM",
+      TRUE ~ Variable
+    ),
+    across(where(is.numeric), ~ round(.x, 3))
+  ) %>%
+  rename(
+    `Estimate` = Estimate,
+    
+    `A` = `HC2`,
+    `t` = `HC2-t`,
+    `WR` = `HC2-WR`,
+    
+    `A ` = `HC3`,
+    `t ` = `HC3-t`,
+    `WR ` = `HC3-WR`,
+    
+    `A  ` = `HC1`,
+    `t  ` = `HC1-t`,
+    `WR  ` = `HC1-WR`,
+    
+    `A   ` = `HC0`,
+    `t   ` = `HC0-t`,
+    `WR   ` = `HC0-WR`
+  )
+
+hcPanel %>%
+  kable(
+    format = "html",
+    caption = "Panel A. HC-based robust inference p-values",
+    align = c("l", rep("c", ncol(hcPanel) - 1)),
+    escape = FALSE,
+    digits = 3
+  ) %>%
+  add_header_above(
+    c(
+      " " = 2,
+      "HC2" = 3,
+      "HC3" = 3,
+      "HC1" = 3,
+      "HC0" = 3
+    )
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    position = "center",
+    bootstrap_options = c("condensed", "hover")
+  ) %>%
+  column_spec(1, bold = TRUE) %>%
+  footnote(
+    general = "Entries are p-values except for the estimate column. A = asymptotic sandwich test; t = percentile-t bootstrap; WR = wild restricted bootstrap. HC2 is shown first because it is the primary heteroskedasticity-consistent specification used in the main analyses.",
+    general_title = "Note. ",
+    footnote_as_chunk = TRUE
+  )
+```
+
+```{r}
+
+crPanel <- sensitivityTable %>%
+  select(
+    Variable, Estimate,
+    CR0, CR1, CR2, CR3
+  ) %>%
+  mutate(
+    Variable = case_when(
+      Variable == "BMI" ~ "BMI",
+      Variable == "ToM" ~ "ToM",
+      Variable == "ThirdGrade:BMI" ~ "Third grade × BMI",
+      Variable == "ThirdGrade:ToM" ~ "Third grade × ToM",
+      TRUE ~ Variable
+    ),
+    across(where(is.numeric), ~ round(.x, 3))
+  )
+
+crPanel %>%
+  kable(
+    format = "html",
+    caption = "Panel B. Asymptotic cluster-robust p-values",
+    align = c("l", rep("c", ncol(crPanel) - 1)),
+    escape = FALSE,
+    digits = 3
+  ) %>%
+  add_header_above(
+    c(
+      " " = 2,
+      "Cluster-robust variance estimator" = 4
+    )
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    position = "center",
+    bootstrap_options = c("condensed", "hover")
+  ) %>%
+  column_spec(1, bold = TRUE) %>%
+  footnote(
+    general = "Entries are p-values except for the estimate column. CR0–CR3 denote classroom-cluster-robust variance estimators. Cluster-robust bootstrap p-values are not reported because the wild cluster bootstrap reference distributions were highly discrete and multimodal under the small number of classroom clusters.",
+    general_title = "Note. ",
+    footnote_as_chunk = TRUE
+  )
+```
+
+```{r}
+
+format_p <- function(x, digits = 3) {
+  ifelse(
+    is.na(x),
+    NA_character_,
+    ifelse(x < .001, "<.001", sub("^0", "", sprintf(paste0("%.", digits, "f"), x)))
+  )
+}
+
+format_range <- function(x, digits = 3) {
+  paste0(
+    format_p(min(x, na.rm = TRUE), digits),
+    "–",
+    format_p(max(x, na.rm = TRUE), digits)
+  )
+}
+
+summaryPanel %>%
+  kable(
+    format = "html",
+    caption = "Summary of sensitivity of focal p-values to robust inference choices",
+    align = c("l", rep("c", ncol(summaryPanel) - 1)),
+    escape = FALSE
+  ) %>%
+  add_header_above(
+    c(
+      " " = 2,
+      "Primary specification" = 3,
+      "Sensitivity ranges" = 4
+    )
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    position = "center",
+    bootstrap_options = c("condensed", "hover")
+  ) %>%
+  column_spec(1, bold = TRUE) %>%
+  footnote(
+    general = "Entries are p-values except for the estimate column. A = asymptotic sandwich test; t = percentile-t bootstrap; WR = wild restricted bootstrap. Other HC ranges summarize HC0, HC1, and HC3. The CR range summarizes asymptotic classroom-cluster-robust p-values from CR0–CR3.",
+    general_title = "Note. ",
+    footnote_as_chunk = TRUE
+  )
+```
+
+## Self status test
+
+### Exclusion restriction
+
+#### Test for heteroskedasticity
+
+```{r}
+
+breuschPagan <- bptest(modelThree)
+
+breuschPagan
+```
+
+#### F test, homoskedastic
+
+```{r}
+
+restricted <- lm(PageRank ~ ThirdGrade + BMI + ToM + ThirdGrade*BMI + ThirdGrade*ToM, data=model.frame(modelThree))
+
+k <- length(modelThree$coefficients)
+
+q <- k - length(restricted$coefficients)
+
+n <- nobs(modelThree)
+
+SSRu <- sum(modelThree$residuals^2)
+
+SSRr <- sum(restricted$residuals^2)
+
+FStat <- ((SSRr - SSRu)/q) / (SSRu/(n-k))
+
+Pval <- 1 - pf(FStat, q, (n-k))
+
+cat("F statistic is ", FStat, ", with p-value = ", Pval, ". We fail to reject that the coefficients on Self Status School are jointly equal to zero. \n\n")
+
+anova(restricted, modelThree)
+```
+
+#### Wild restricted Wald
+
+```{r}
+
+if (runBootstraps) {
+  
+  set.seed(73387)
+  
+  modelList <- list(
+    modelThree = list(
+      call = modelThree,
+      unrestricted = coeftest(modelThree, vcov = vcovHC(modelThree, type = vcovType))
+    )
+  )
+  
+  for (m in names(modelList)) {
+    
+    restrictedData <- model.frame(modelList[[m]][["call"]])
+    
+    predictors <- rownames(modelList[[m]][["unrestricted"]])
+    
+    restrictedFit <- lm(PageRank ~ ThirdGrade + BMI + ToM + ThirdGrade*BMI + ThirdGrade*ToM, data=restrictedData)
+    
+    restrictedFitted <- fitted(restrictedFit)
+    
+    restrictedResiduals <- residuals(restrictedFit)
+    
+    modelList[[m]][["restricted"]][["fitted"]] <- restrictedFitted
+    modelList[[m]][["restricted"]][["residuals"]] <- restrictedResiduals - mean(restrictedResiduals)
+    
+  }
+  
+  rademacher <- function(n) sample(c(-1, 1), n, replace = TRUE)
+  
+  restrictedWaldFun <- function(i, modelList) {
+    
+    rowList <- lapply(
+      X = names(modelList),
+      FUN = function(m) {
+        
+        bootData <- model.frame(modelList[[m]][["call"]])
+        
+        residualSample <- rademacher(nrow(bootData)) *  modelList[[m]][["restricted"]][["residuals"]]
+        
+        response <- modelList[[m]][["restricted"]][["fitted"]] + residualSample
+        
+        bootData$PageRank <- response
+        
+        unrestrictedBoot <- lm(formula(modelList[[m]][["call"]]), data=bootData)
+        
+        testWald <- car::linearHypothesis(
+          unrestrictedBoot,
+          c("SelfStatusSchool = 0", "ThirdGrade:SelfStatusSchool = 0"),
+          vcov. = vcovHC(unrestrictedBoot, type = vcovType),
+          test = "Chisq"
+        )
+        
+        chiStar <- testWald[2, "Chisq"]
+        
+        return(c(chi=chiStar))
+      }
+    )
+    
+    return(unlist(rowList))
+  }
+  
+  if (parallelSupported) {
+    bootResults <- mclapply(
+      X = 1:B,
+      FUN = restrictedWaldFun,
+      modelList = modelList,
+      mc.cores = availableCores
+    )
+  } else {
+    bootResults <- lapply(
+      X = 1:B,
+      FUN = restrictedWaldFun,
+      modelList = modelList
+    )
+  }
+  
+  bootMatrix <- do.call(rbind, bootResults)
+  
+  saveRDS(bootMatrix, "../Data/bootMatrixWald.rds")
+}
+```
+
+```{r}
+
+bootMatrix <- readRDS("../Data/bootMatrixWald.rds")
+
+testWald <- car::linearHypothesis(
+  modelThree,
+  c("SelfStatusSchool = 0", "ThirdGrade:SelfStatusSchool = 0"),
+  vcov. = sandwich::vcovHC(modelThree, type = "HC3"),
+  test = "Chisq"
+)
+
+chiHat <- testWald[2, "Chisq"]
+
+pBootChi <- mean(bootMatrix[,"chi"] >= chiHat, na.rm=TRUE)
+
+cat("Chi square statistic is ", chiHat, ", with p-value = ", pBootChi, ". We fail to reject that the coefficients on Self Status School are jointly equal to zero. \n\n")
+
+testWald
+```
+
+## BMI test
+
+### Test linear combination of BMI coefficients
+
+```{r}
+
+modelCombination <- lm(PageRank ~ ThirdGrade + BMI + ToM + Grades + I(ThirdGrade*BMI - BMI) + ThirdGrade*ToM, data=replicationData)
+
+robustCombination <- vcovHC(modelCombination, type = vcovType)
+
+testCombination <- coeftest(modelCombination, vcov. = robustCombination)
+
+cat("Joint coefficient for BMI + ThirdGrade:BMI is ", testCombination["BMI", "Estimate"], ", with p-value = ", testCombination["BMI", "Pr(>|t|)"], ". We fail to reject that the effect for the third grade cohort is equal to 0. \n\n")
+
+testCombination
+```
+
+### Model without interaction
+
+```{r}
+
+modelBMI <- lm(PageRank ~ ThirdGrade + BMI + ToM + Grades + ThirdGrade*ToM, data=model.frame(modelFour))
+
+vcovBMI <- vcovHC(modelBMI, type = vcovType)
+
+testBMI <- coeftest(modelBMI, vcov. = vcovBMI)
+
+testBMI
+
+summary(modelBMI)$r.squared
+```
+
+## Plot
+
+### Obtain fitted values in long format
+
+```{r}
+
+criticalT <- qt(0.975, modelFour$df.residual)
+
+domain <- seq(-5,5,0.25)
+
+BMI <-  c(rep(domain, times=2), rep(0, times=length(domain)*2))
+
+ToM <-  c(rep(0, times=length(domain)*2), rep(domain, times=2))
+
+thirdGrade <- rep(c(0,1,0,1), each=length(domain))
+
+predData <- data.frame(ThirdGrade=thirdGrade, BMI=BMI, ToM=ToM, Grades=0)
+
+matrixData <- predData %>%
+  mutate(
+    "(Intercept)"=1,
+    "ThirdGrade:BMI"=ThirdGrade*BMI,
+    "ThirdGrade:ToM"=ThirdGrade*ToM
+  ) %>%
+  select(c(names(modelFour$coefficients))) #Order columns to match model covariance structure
+
+matrixData <- as.matrix(matrixData)
+
+VarPreds <- matrixData %*% vcovFour %*% t(matrixData)
+
+sePreds <- sqrt(diag(VarPreds))
+
+plotData <- predData %>%
+  mutate(
+    PageRank = predict(modelFour, newdata = predData),
+    Lower = PageRank - criticalT * sePreds,
+    Upper = PageRank + criticalT * sePreds,
+  )
+
+plotDataLong <- plotData %>%
+  filter(-2 <= BMI & BMI <= 2.5) %>% # Exclude predictions out of support (no observations, one exception)
+  filter(-3 <= ToM & ToM <= 1) %>% # Exclude predictions out of support (no observations)
+  pivot_longer(
+    cols = c("BMI", "ToM"),
+    names_to = "Predictor",
+    values_to = "Value"
+  ) %>%
+  filter(Value!=0)
+
+plotDataLong$Grade <- ifelse(plotDataLong$ThirdGrade==0, "First", "Third")
+
+plotDataScatter <- model.frame(modelFour) %>%
+  mutate(Grade=ifelse(ThirdGrade==0, "First", "Third")) %>%
+  pivot_longer(
+    cols=c("BMI", "ToM"),
+    values_to = "Value",
+    names_to = "Predictor"
+  ) %>%
+  filter(!(Predictor == "BMI" & Value > 3)) # Filter extreme observation (1 case) for visualization only
+```
+
+### Plot
+
+```{r}
+
+plot <- ggplot(plotDataLong, aes(x=Value, y=PageRank, color=Grade, fill=Grade))+
+  geom_line(size=1.5)+
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.1, colour = NA, linewidth = 0)+
+  geom_jitter(
+    data = plotDataScatter,
+    alpha = 0.25,
+    size = 1.6,
+    width = 0.03,
+    height = 0
+  ) +  
+  facet_wrap(~Predictor, nrow = 1, scales = "free_x")+
+  scale_color_manual(
+    values = c("First" = "lightcoral", "Third" = "steelblue"),
+    labels = c("First grade", "Third grade")
+  )+
+  scale_fill_manual(
+    values  = c("First" = "lightcoral", "Third" = "steelblue"),
+    labels = c("First grade", "Third grade")
+  )+
+  labs(
+    x = "Predictor (z)",
+    y = "Fitted PageRank (z)",
+    color = "Grade",
+#    title = "Main effects across groups",
+#    subtitle = "",
+#    caption = "Figure 1. Model-implied associations between main predictors and PageRank by grade. Lines show fitted values of standardized PageRank across standardized predictor values, separately for first- and third-grade students. Shaded bands represent 95% confidence intervals for the fitted values. Points show observed cases and are jittered horizontally for visibility. One extreme BMI observation outside the plotted x-axis range is omitted from the scatter layer only; model estimates are based on the full analytic sample."
+  ) +
+#  coord_cartesian(xlim = c(-2.7, 2.7)) +
+  theme_minimal(base_size = 11, base_family = "Helvetica")+
+  theme(
+    plot.title.position = "plot",
+    plot.caption.position = "plot",
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    strip.text = element_text(face = "bold"),
+    legend.position = "top",
+#    legend.title = element_text(margin = margin(r = 6)),
+    legend.title = element_blank(),
+    legend.text = element_text(margin = margin(r = 10)),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    panel.spacing.x = unit(14, "pt")
+  ) +
+  guides(
+    color = guide_legend(override.aes = list(alpha = 1, linewidth = 1.1))
+  )
+
+plot
+```
+
+```{r}
+
+if (saveTables) {
+  ggsave(
+    "../Plots/main_effects_groups.tiff",
+    plot = plot,
+    width = 7.2,
+    height = 4.2,
+    units = "in",
+    dpi = 600,
+    compression = "lzw"
+  )
+  
+  ggsave(
+    "../Plots/main_effects_groups.png",
+    plot = plot,
+    width = 7.2,
+    height = 4.2,
+    units = "in",
+    dpi = 600,
+    device = ragg::agg_png
+  ) 
+}
+```
+
+## QQ Plot
+
+```{r}
+
+res <- data.frame(residuals=residuals(modelFour)) 
+
+ggplot(res, aes(sample=residuals)) +
+  stat_qq(color="steelblue") +
+  stat_qq_line(color="steelblue2", linewidth=1) +
+  labs(title = "QQ-Plot", x="Expected", y="Sample")+
+  theme_minimal()
+```
+
+## Omitted variable bias (correlations) check
+
+```{r}
+
+replicationData %>%
+  select(PageRank, ThirdGrade, BMI, ToM, SelfStatusSchool, Grades) %>%
+  cor(use="pairwise.complete.obs") %>%
+  round(3)
+
+replicationData %>%
+  filter(!is.na(ToM) & !is.na(Grades)) %>%
+  group_by(ThirdGrade) %>%
+  summarise(Correlation = cor(ToM, Grades))
+
+replicationData %>%
+  filter(!is.na(BMI) & !is.na(Grades)) %>%
+  group_by(ThirdGrade) %>%
+  summarise(Correlation = cor(BMI, Grades))
+```
+
+## WCR diagnostic plot
+
+```{r}
+
+targets <- c("BMI", "ToM", "ThirdGrade:BMI", "ThirdGrade:ToM")
+```
+
+```{r}
+
+if (runBootstraps) {
+  
+  set.seed(73387)
+  
+  predictors <- names(modelFour$coefficients)[-1] #Exclude intercept
+  
+  restrictedFitted <- list()
+  restrictedResiduals <- list()
+  
+  for (p in which(predictors %in% targets)) {
+    
+    modelString <- paste0("PageRank ~ ", paste(predictors[-p], collapse = " + "))
+    
+    restrictedFit <- lm(modelString, data=replicationData)
+    
+    restrictedFitted[[predictors[p]]] <- fitted(restrictedFit)
+    
+    r <- residuals(restrictedFit)
+    
+    restrictedResiduals[[predictors[p]]] <- r - mean(r, na.rm=TRUE)
+    
+  }
+  
+  rademacher <- function(n) sample(c(-1, 1), n, replace = TRUE)
+  
+  bootData <- replicationData[rownames(model.frame(modelFour)),] %>%
+    mutate(
+      ClassID = as.factor(as.integer(ClassID)) #Relabel and order from 1:G
+    )
+  
+  G <-  length(unique(bootData[["ClassID"]]))
+  
+  WCRBootFun <- function(i) {
+  
+    rademacherDraw <- rademacher(G)
+    
+    rademacherDraw <- rademacherDraw[bootData$ClassID]
+    
+    tStats <- sapply(
+      X=targets,
+      FUN = function(p) {
+        
+        residualSample <- rademacherDraw * restrictedResiduals[[p]]
+        
+        response <- restrictedFitted[[p]] + residualSample
+        
+        bootSample <- bootData
+        
+        bootSample$PageRank <- response
+        
+        modelString <- paste0("PageRank ~ ", paste(predictors, collapse=" + "))
+        
+        unrestrictedBoot <- lm(modelString, data=bootSample)
+        
+        vcovBoot <- vcovCR(
+          unrestrictedBoot,
+          cluster=bootSample$ClassID,
+          type = "CR2"
+        )
+        
+        test  <- coeftest(unrestrictedBoot, vcov.=vcovBoot, df=G-1)
+        
+        tStar <- test[p, "t value"]
+        
+        return(tStar)
+      }
+    )
+      
+    names(tStats) <- targets
+    
+    return(tStats)
+  }
+  
+  if (parallelSupported) {
+    bootResults <- mclapply(
+      X = 1:B,
+      FUN = WCRBootFun,
+      mc.cores = availableCores
+    )
+  } else {
+    bootResults <- lapply(
+      X = 1:B,
+      FUN = WCRBootFun
+    )
+  }
+  
+  bootMatrix <- do.call(rbind, bootResults)
+  
+  saveRDS(bootMatrix, "../Data/bootMatrixWCR.rds")
+  
+}
+```
+
+Wild cluster bootstrap diagnostic distributions. Histograms show the restricted wild cluster bootstrap t-statistic distributions for the focal coefficients. The distributions are highly discrete and multimodal due to the small number of clusters. For this reason, WCR p-values were treated as unreliable and are not presented along the main results.
+
+```{r}
+
+bootMatrix <- readRDS("../Data/bootMatrixWCR.rds")
+
+plotBoot <- as.data.frame(bootMatrix) %>%
+  pivot_longer(
+    cols = all_of(targets),
+    names_to = "coefficient",
+    values_to = "distribution"
+  )
+
+ggplot(plotBoot, aes(x = distribution, fill = coefficient)) +
+  geom_histogram(binwidth = 0.33) +
+  facet_wrap(~ coefficient, scales = "free") +
+  theme_minimal()
+```
