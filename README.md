@@ -2,14 +2,14 @@
 
 Replication package for **“Developmental Shifts in Social Status Detection Among School-Age Children.”**
 
-Work in progress: This project is ongoing. The analyses and replication materials are not yet finalized and may change.
+**Work in progress:** This project is ongoing. The analyses and replication materials are not yet finalized and may change.
 
 ## Replication files
 
 | File | Description |
 | --- | --- |
 | `Scripts/replicationScript.qmd` | Analysis code, including regression models, bootstrap inference, sensitivity analyses, and table and figure generation. |
-| `Data/replicationData.rds` | Study data, including PageRank social status, grade cohort, classroom, body mass index, theory of mind, self-perceived social status, and academic grades. |
+| `Data/replicationData.rds` | Study data, including PageRank social status, grade cohort, classroom, body mass index, theory of mind, self-perceived social status, and academic grades. Data will not be made available until publication. |
 | `Data/bootMatrixT.rds` | Saved percentile-t bootstrap statistics for the four regression models. |
 | `Data/bootMatrixWR.rds` | Saved wild restricted bootstrap statistics for the four regression models. |
 | `Data/bootMatrixSV.rds` | Saved bootstrap statistics for the score-variance test of classroom clustering. |
